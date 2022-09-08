@@ -33,66 +33,70 @@ bm.counts <- Read10X(data.dir = dir)
 bm = CreateSeuratObject(bm.counts,
                         project = 'bone marrow',
                         min.cells=3,
+                        min.features = 200
                         )
-dim(scRNA1)   #查看基因数和细胞总数
-table(scRNA1@meta.data$orig.ident)  #查看每个样本的细胞数
+dim(bm)   #check the dimension of the object
+# 23480 * 87349
+table(bm@meta.data$orig.ident)  #check the cell numbers of each sample
 
 
 # Standard workflow
-## Normalize the data
-pbmc.live <- NormalizeData(object = pbmc.live,
-                           normalization.method = "LogNormalize", 
-                           scale.factor = 1e4
-                           # round(median(pbmc@meta.data$nCount_RNA))
-)
+# QC
+bm[["percent.mt"]] <- PercentageFeatureSet(bm, pattern = "^MT-")
+VlnPlot(bm, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+bm <- subset(bm, subset = nCount_RNA > 1000 & percent.mt < 10 & nFeature_RNA >500)
+bm <- subset(bm, subset = nCount_RNA < 60000 & nFeature_RNA < 6000)
+VlnPlot(bm, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+dir.create("./pbmc_filtered")
+write10xCounts("./pbmc_filtered/outs/",bm[["RNA"]]@counts,version = "3")
 
+
+
+# Filter the doublets
+doublets <- read.csv('./pbmc_filtered/outs/doublets.txt',header = TRUE)
+bm@meta.data$DoubletScore <- doublets$doublet_scores
+bm@meta.data$DoubletPred <- doublets$predicted_doublets
+doublets_list <- rownames(bm@meta.data[bm@meta.data$DoubletPred == 'True',])
+singlets_list <- rownames(bm@meta.data[bm@meta.data$DoubletPred == 'False',])
+bm <- subset(x = bm, subset = DoubletPred == 'False')
+
+
+## Normalize the data
+bm <- NormalizeData(object = bm,
+                    normalization.method = "LogNormalize", 
+                    scale.factor = 1e4
+                    # round(median(pbmc@meta.data$nCount_RNA))
+)
 ## Feature selection
 ## Identification of highly variable features and plot variable features
-all.genes <- rownames(pbmc.live)
-pbmc.live <- FindVariableFeatures(pbmc.live, selection.method = "vst", nfeatures = 2000)
-top10 <- head(VariableFeatures(pbmc.live), 10)
-plot1 <- VariableFeaturePlot(pbmc.live)
+all.genes <- rownames(bm)
+bm <- FindVariableFeatures(bm, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(bm), 10)
+plot1 <- VariableFeaturePlot(bm)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot2
 
+
+saveRDS(bm,'/Users/kimhan/Desktop/doublet/bm/Doublets/bm_before_scale.rds')
 ## Scale the data 
-pbmc.live <- ScaleData(pbmc.live, features = all.genes, vars.to.regress = "percent.mt")
+bm <- ScaleData(bm, features = all.genes, vars.to.regress = "percent.mt")
 
 ## Run linear dimensional reduction
-pbmc.live <- RunPCA(pbmc.live, features = VariableFeatures(object = pbmc.live))
+bm <- RunPCA(bm, features = VariableFeatures(object = bm))
 
 ## Determine the ‘dimensionality’ of the dataset
-pbmc.live <- JackStraw(pbmc.live, num.replicate = 100)
-pbmc.live <- ScoreJackStraw(pbmc.live, dims = 1:20)
-JackStrawPlot(pbmc.live, dims = 1:15)
-ElbowPlot(pbmc.live)
+bm <- JackStraw(bm, num.replicate = 100)
+bm <- ScoreJackStraw(bm, dims = 1:20)
+JackStrawPlot(bm, dims = 1:15)
+ElbowPlot(bm)
 
 # We choose 15 as the final
 # Run non-linear dimensional reduction
-pbmc.live <- FindNeighbors(pbmc.live, dims = 1:15)
-pbmc.live <- FindClusters(pbmc.live, resolution = 0.5)
-pbmc.live <- RunUMAP(pbmc.live, dims = 1:15)
-DimPlot(pbmc.live, reduction = "umap",label = TRUE)
-saveRDS(pbmc.live, file = "./pbmc_test2.rds")
-
-#合并方法1
-bm.counts <- Read10X(data.dir = dir)
-pbmc.live <- CreateSeuratObject(counts = pbmc.live.data,
-                                project = "pbmc_live_10X",
-                                min.cells = 3,
-                                min.features = 200)
-
-# QC
-pbmc.live[["percent.mt"]] <- PercentageFeatureSet(pbmc.live, pattern = "^MT-")
-VlnPlot(pbmc.live, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-pbmc.live <- subset(pbmc.live, subset = nCount_RNA > 1000 & percent.mt < 10 & nFeature_RNA >500)
-pbmc.live <- subset(pbmc.live, subset = nCount_RNA < 25000 & nFeature_RNA < 5000)
-VlnPlot(pbmc.live, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-dir.create("./pbmc_filtered")
-write10xCounts("./pbmc_filtered/outs/",pbmc.live[["RNA"]]@counts,version = "3")
+bm <- FindNeighbors(bm, dims = 1:15)
+bm <- FindClusters(bm, resolution = 0.5)
+bm <- RunUMAP(bm, dims = 1:15)
+DimPlot(bm, reduction = "umap",label = TRUE)
+saveRDS(bm, file = "./pbmc_test2.rds")
 
 
 
-scRNA1 = CreateSeuratObject(counts, min.cells=1)
-dim(scRNA1)   #查看基因数和细胞总数
-table(scRNA1@meta.data$orig.ident)  #查看每个样本的细胞数
