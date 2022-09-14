@@ -108,12 +108,14 @@ bm.hesc.main <- SingleR(test = bm_for_SingleR, ref = list(ref_HPCA,ref_MI), labe
 bm.hesc.fine <- SingleR(test = bm_for_SingleR, ref = list(ref_HPCA,ref_MI), labels = list(ref_HPCA$label.fine,ref_MI$label.fine))
 bm.hesc.main
 bm.hesc.fine
-table(bm.hesc.main$labels,bm@meta.data$seurat_clusters)
-table(bm.hesc.fine$labels,bm@meta.data$seurat_clusters)
+bm_sglr_main <- table(bm.hesc.main$labels,bm@meta.data$seurat_clusters)
+write.csv(bm_sglr_main,'./bm_sglr_main.csv')
+bm_sglr_fine <- table(bm.hesc.fine$labels,bm@meta.data$seurat_clusters)
+write.csv(bm_sglr_fine,'./bm_sglr_fine.scv')
 
 # Manul annotation
 top_100_markers <- data.frame(matrix(0,nrow = 100,ncol = length(levels(bm@meta.data$seurat_clusters))))
-for (i in 1:12){
+for (i in 1:length(levels(bm@meta.data$seurat_clusters))){
   cluster_markers <- FindMarkers(bm,ident.1 = i-1,min.pct = 0.25)
   top_100_markers[,i] <- head(rownames(cluster_markers),100)
 }
@@ -126,6 +128,7 @@ new.cluster.ids <- c("CD14+ Monocytes", "CD4+ T cells", 'Naive T cells', 'CD8+ T
 names(new.cluster.ids) <- levels(bm)
 bm <- RenameIdents(bm, new.cluster.ids)
 DimPlot(bm, reduction = "umap", label = TRUE, pt.size = 0.6,label.size = 4)
+DimPlot(bm, reduction = "tsne", label = TRUE, pt.size = 0.6,label.size = 4)
 
 # remove the unknown cluster
 bm <- subset(bm,idents = 'Unknown',invert = TRUE)
