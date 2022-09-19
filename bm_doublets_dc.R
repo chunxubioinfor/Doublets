@@ -33,7 +33,7 @@ samples=list.files("~/Desktop/doublet/bm/GSE120221_RAW/")
 dir <- file.path('~/Desktop/doublet/bm/GSE120221_RAW',samples)
 names(dir) <- samples
 bm.counts <- Read10X(data.dir = dir)
-bm = CreateSeuratObject(bm.counts,
+bm_origin = CreateSeuratObject(bm.counts,
                         project = 'bone marrow',
                         min.cells=3,
                         min.features = 200
@@ -138,13 +138,13 @@ DimPlot(bm, reduction = "umap", label = TRUE, pt.size = 0.6,label.size = 4)
 bm <- subset(bm,idents = 'Unknown',invert = TRUE)
 DimPlot(bm, reduction = "umap",label = TRUE,pt.size = 0.5)
 
+sink('./output.txt')
 sObj.si_list <- list()
 circos_plot_list <- list()
-lay1 <- lay_new(mat = matrix(1:25, ncol = 5))
-lay_set(lay1)
+connection_list <- list()
 for (i in 1:length(samples)){
   sample_id <- samples[i]
-  bm_sub <- subset(bm,subset = orig.ident = i)
+  bm_sub <- subset(bm_origin,orig.ident == sample_id)
   singlets <- singlets_list[str_detect(singlets_list,sample_id)]
   doublets <- doublets_list[str_detect(doublets_list,sample_id)]
   raw_counts <- as.data.frame(bm_sub@assays$RNA@counts,stringsAsFactors = F)
@@ -157,28 +157,39 @@ for (i in 1:length(samples)){
   counts.mul <- as.matrix(counts.mul)
   counts.mul[1:2, 1:2]
   
-  classes <- as.character(as.data.frame(Idents(bm_sub))$`Idents(bm_sub)`)
-  dim <- Embeddings(object = bm_sub, reduction = "pca")
-  features <- match(VariableFeatures(bm_sub),rownames(bm_sub))
+  bm_singlets <- subset(bm,orig.ident == sample_id)
+  classes <- as.character(as.data.frame(Idents(bm_singlets))$`Idents(bm_singlets)`)
+  dim <- Embeddings(object = bm_singlets, reduction = "pca")
+  features <- match(VariableFeatures(bm_singlets),rownames(bm_singlets))
   
-  print('Now the deconvolution of ',sample_id,'is ready!')
+  print(paste('Now the deconvolution is',sample_id,'is ready!'))
   cObjSng.si <-CIMseqSinglets(counts=counts.sng, classification=classes, norm.to=10000)
   cObjMul.si <- CIMseqMultiplets(counts=counts.mul, features=features,norm.to=10000)
   
   sObj.si <- CIMseqSwarm(cObjSng.si, cObjMul.si, maxiter=100, swarmsize=110, nSyntheticMultiplets=200, seed=123)
-  sObj.si_list[i] <- sObj.si
+  sObj.si_list[[i]] <- sObj.si
   deconvolution_result <- sObj.si@fractions
   
   si.edges <- calculateEdgeStats(sObj.si, cObjSng.si, cObjMul.si, multiplet.factor=2, maxCellsPerMultiplet=3)
-  si.edges %>% filter(pval < 5e-2 & weight > 3) %>% arrange(desc(score)) %>% head(n=10)
+  print(paste('The top ten connection within',sample_id,'is as below:'))
+  connection_list[[i]] <- si.edges %>% filter(pval < 5e-2 & weight > 3) %>% arrange(desc(score)) %>% head(n=10)
+  print('The circos plot is ready!')
+  Cairo::CairoPNG(filename = paste(sample_id,'.png',sep = ''),
+                  width = 7,
+                  height = 7,
+                  units = "in",
+                  dpi = 300
+                  )
   plotSwarmCircos(sObj.si, cObjSng.si, cObjMul.si, weightCut=3,
-                  maxCellsPerMultiplet=3, alpha=0.05, h.ratio=0.5,
-                  depleted=F, multiplet.factor=2)
-  print('The circos plot of ',sample_id,'is done!')
-  print('The deconvolution of ',sample_id,'is done!')
-  mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si.k, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
-  
+                  maxCellsPerMultiplet=3, alpha=0.05, h.ratio=0.3,
+                  depleted=F, multiplet.factor=2,legend=F
+                  )
+  dev.off()
+  print(paste('The circos plot of',sample_id,'is stored in',paste(sample_id,'.png',sep = ''),sep = ' '))
+  print(paste('The deconvolution of',sample_id,'is done!',sep = ' '))
+  mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
 }
+sink()
 
 # CIMseq deconvolution of doublets
 ## prepare for the four arguments
