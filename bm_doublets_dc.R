@@ -10,6 +10,9 @@ library(devtools)
 library(CIMseq)
 library(future)
 library(tidyverse)
+library(SCOPfunctions)
+library(stringr)
+library(customLayout)
 use_python("/usr/bin/python3")
 
 setwd('~/Desktop/doublet/bm/')
@@ -122,17 +125,60 @@ for (i in 1:length(levels(bm@meta.data$seurat_clusters))){
 top_100_markers
 
 table(bm@active.ident)
-new.cluster.ids <- c("CD14+ Monocytes", "CD4+ T cells", 'Naive T cells', 'CD8+ T cells',"NK cells",'CD4+ T cells','CD8+ T cells','B cells',
-                     'CD16+ Monocytes','Myeloid dendritic cells','Megakaryotes','Plasmacytoid dendritic cells'
-)
+new.cluster.ids <- c("CD4+ naive T cells", "CD4+ memory T cells", 'CD8+ T cells', 'CD14+ monocytes',"B cells",'Late erythroid progenitors',
+                     'Early erythrocytes','Hematopoietic stem cell','Early erythroid progenitors','Late erythrocytes','B cell progenitors',
+                     'CD16+ monocytes','Granulocyte/monocyte progenitor cells','Myeloid dendritic cells','Late erythrocytes','Plasma cells',
+                     'Plasmacytoid dendritic cells','Natural killer cells','B cells')
 names(new.cluster.ids) <- levels(bm)
 bm <- RenameIdents(bm, new.cluster.ids)
 DimPlot(bm, reduction = "umap", label = TRUE, pt.size = 0.6,label.size = 4)
-DimPlot(bm, reduction = "tsne", label = TRUE, pt.size = 0.6,label.size = 4)
+#DimPlot(bm, reduction = "tsne", label = TRUE, pt.size = 0.6,label.size = 4)
 
 # remove the unknown cluster
 bm <- subset(bm,idents = 'Unknown',invert = TRUE)
 DimPlot(bm, reduction = "umap",label = TRUE,pt.size = 0.5)
+
+sObj.si_list <- list()
+circos_plot_list <- list()
+lay1 <- lay_new(mat = matrix(1:25, ncol = 5))
+lay_set(lay1)
+for (i in 1:length(samples)){
+  sample_id <- samples[i]
+  bm_sub <- subset(bm,subset = orig.ident = i)
+  singlets <- singlets_list[str_detect(singlets_list,sample_id)]
+  doublets <- doublets_list[str_detect(doublets_list,sample_id)]
+  raw_counts <- as.data.frame(bm_sub@assays$RNA@counts,stringsAsFactors = F)
+  counts.sng <- select(raw_counts,singlets)[all.genes,]
+  counts.sng[is.na(counts.sng)] <- 0
+  counts.sng <- as.matrix(counts.sng)
+  counts.sng[1:2, 1:2]
+  counts.mul <- select(raw_counts,doublets)[all.genes,]
+  counts.mul[is.na(counts.mul)] <- 0
+  counts.mul <- as.matrix(counts.mul)
+  counts.mul[1:2, 1:2]
+  
+  classes <- as.character(as.data.frame(Idents(bm_sub))$`Idents(bm_sub)`)
+  dim <- Embeddings(object = bm_sub, reduction = "pca")
+  features <- match(VariableFeatures(bm_sub),rownames(bm_sub))
+  
+  print('Now the deconvolution of ',sample_id,'is ready!')
+  cObjSng.si <-CIMseqSinglets(counts=counts.sng, classification=classes, norm.to=10000)
+  cObjMul.si <- CIMseqMultiplets(counts=counts.mul, features=features,norm.to=10000)
+  
+  sObj.si <- CIMseqSwarm(cObjSng.si, cObjMul.si, maxiter=100, swarmsize=110, nSyntheticMultiplets=200, seed=123)
+  sObj.si_list[i] <- sObj.si
+  deconvolution_result <- sObj.si@fractions
+  
+  si.edges <- calculateEdgeStats(sObj.si, cObjSng.si, cObjMul.si, multiplet.factor=2, maxCellsPerMultiplet=3)
+  si.edges %>% filter(pval < 5e-2 & weight > 3) %>% arrange(desc(score)) %>% head(n=10)
+  plotSwarmCircos(sObj.si, cObjSng.si, cObjMul.si, weightCut=3,
+                  maxCellsPerMultiplet=3, alpha=0.05, h.ratio=0.5,
+                  depleted=F, multiplet.factor=2)
+  print('The circos plot of ',sample_id,'is done!')
+  print('The deconvolution of ',sample_id,'is done!')
+  mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si.k, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
+  
+}
 
 # CIMseq deconvolution of doublets
 ## prepare for the four arguments
@@ -145,6 +191,8 @@ counts.mul <- select(raw_counts,doublets_list)[all.genes,]
 counts.mul[is.na(counts.mul)] <- 0
 counts.mul <- as.matrix(counts.mul)
 counts.mul[1:2, 1:2]
+
+raw_counts <- utils_big_as.matrix(bm.counts, n_slices_init = 1, verbose = T)
 
 classes <- as.character(as.data.frame(Idents(bm))$`Idents(bm)`)
 dim <- Embeddings(object = bm, reduction = "pca")
@@ -173,46 +221,4 @@ plotSwarmCircos(sObj.si, cObjSng.si, cObjMul.si, weightCut=3,
                 depleted=F, multiplet.factor=2)
 mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si.k, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
 
-bm.re <- readRDS('/Users/kimhan/Desktop/bm_test2.rds')
-new.cluster.ids <- c("CD14+ Monocytes", "CD4+ T cells", 'Naive T cells', 'CD8+ T cells',"NK cells",'CD4+ T cells','CD8+ T cells','B cells',
-                     'CD16+ Monocytes','Myeloid dendritic cells','Megakaryotes','Plasmacytoid dendritic cells'
-)
-names(new.cluster.ids) <- levels(bm.re)
-bm.re <- RenameIdents(bm.re, new.cluster.ids)
-raw_counts_re <- as.data.frame(bm.counts,stringsAsFactors = F)    #get the raw counts matrix
-counts.sng.re <- select(raw_counts_re,singlets_list)[all.genes,]
-counts.sng.re[is.na(counts.sng.re)] <- 0
-counts.sng.re <- as.matrix(counts.sng.re)
-counts.sng.re[1:2, 1:2]
-counts.mul.re <- select(raw_counts_re,doublets_list)[all.genes,]
-counts.mul.re[is.na(counts.mul.re)] <- 0
-counts.mul.re <- as.matrix(counts.mul.re)
-counts.mul.re[1:2, 1:2]
-
-classes.re <- as.character(as.data.frame(Idents(bm.re))$`Idents(bm.re)`)
-dim.re <- Embeddings(object = bm.re, reduction = "pca")
-features.re <- match(VariableFeatures(bm.re),rownames(bm.re))
-
-cObjSng.si.re <-CIMseqSinglets(counts=counts.sng.re, classification=classes.re, norm.to=10000)
-cObjMul.si.re <- CIMseqMultiplets(counts=counts.mul.re, features=features.re,norm.to=10000)
-
-ercc.s <- grepl("^ERCC\\-[0-9]*$", rownames(counts.sng))
-singlets <- counts.sng[!ercc.s, ]
-singletERCC <- counts.sng[ercc.s, ]
-ercc.m <- grepl("^ERCC\\-[0-9]*$", rownames(counts.mul))
-multiplets <- counts.mul[!ercc.m, ]
-multipletERCC <- counts.mul[ercc.m, ]
-
-plan(multicore)
-options(future.globals.maxSize= 1000000000)
-sObj.si.re <- CIMseqSwarm(cObjSng.si.re, cObjMul.si.re, maxiter=100, swarmsize=110, nSyntheticMultiplets=200, seed=123)
-deconvolution_result.re <- sObj.si.re@fractions
-deconvolution_result
-
-si.edges.re <- calculateEdgeStats(sObj.si.re, cObjSng.si.re, cObjMul.si.re, multiplet.factor=2, maxCellsPerMultiplet=3)
-si.edges.re %>% filter(pval < 5e-2 & weight > 1) %>% arrange(desc(score)) %>% head(n=10)
-plotSwarmCircos(sObj.si.re, cObjSng.si.re, cObjMul.si.re, weightCut=3,
-                maxCellsPerMultiplet=3, alpha=0.05, h.ratio=0.5,
-                depleted=F, multiplet.factor=2)
-mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si.k, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
 
