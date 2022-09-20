@@ -19,7 +19,8 @@ bm <- readRDS('./input/bm.rds')
 
 sObj.si_list <- list()
 connection_list <- list()
-de_result_list = list()
+de_result_list <- list()
+mult.pred_list <- list()
 
 for (i in 1:length(samples)){
   sample_id <- samples[i]
@@ -68,8 +69,8 @@ for (i in 1:length(samples)){
   print(paste('The circos plot of',sample_id,'is stored in',paste(sample_id,'.png',sep = ''),sep = ' '))
   print(paste('The deconvolution of',sample_id,'is done!',sep = ' '))
   mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
+  mult.pred_list[[i]] <- mult.pred
 }
-
 
 saveRDS(sObj.si_list,'./output/sObj.si_list.rds')
 saveRDS(connection_list,'./output/connection_list.rds')
