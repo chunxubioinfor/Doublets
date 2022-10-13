@@ -1,17 +1,13 @@
 ## This is a R scripts run on server ##
 ## Library as less as you can and save the output carefully##
 
-print(paste('The number of available cores is',detectCores()))
-cl <- makeCluster(8, type="SOCK")
-
-
 library(parallel)
 library(snow)
-library(Seurat)
-library(stringr)
-library(dplyr)
-library(CIMseq)
-library(Cairo)
+library(snowfall)
+
+
+print(paste('The number of available cores is',detectCores()))
+sfInit(parallel = TRUE, cpus = detectCores() - 2)
 
 setwd('data/hancx/project/doublets/doublets_bm/')
 samples <- readRDS('./input/samples.rds')
@@ -21,14 +17,16 @@ doublets_list <- readRDS('./input/doublets_list.rds')
 all.genes <- readRDS('./input/all.genes.rds')
 bm <- readRDS('./input/bm.rds')
 
+sfLibrary(Seurat)
+sfLibrary(stringr)
+sfLibrary(dplyr)
+sfLibrary(CIMseq)
+sfLibrary(Cairo)
 
-sObj.si_list <- list()
-connection_list <- list()
-de_result_list <- list()
-mult.pred_list <- list()
-
-
-doublets_dec <- function(sample_id){
+sfExport('samples','bm_origin','singlets_list','doublets_list','all.genes','bm')
+result <- sfLapply(1:25, doublets_dc)
+doublets_dc <- function(id){
+  sample_id <- samples[id]
   result <- list()
   bm_sub <- subset(bm_origin,orig.ident == sample_id)
   singlets <- singlets_list[str_detect(singlets_list,sample_id)]
@@ -80,6 +78,11 @@ doublets_dec <- function(sample_id){
   saveRDS(result,file_name)
   return(result)
 }
+
+sObj.si_list <- list()
+connection_list <- list()
+de_result_list <- list()
+mult.pred_list <- list()
 for (i in 1:length(samples)){
   sample_id <- samples[i]
   bm_sub <- subset(bm_origin,orig.ident == sample_id)

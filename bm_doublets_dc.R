@@ -13,6 +13,9 @@ library(tidyverse)
 library(SCOPfunctions)
 library(stringr)
 library(customLayout)
+library(clustree)
+library(ggplot2)
+library(ggpubr)
 use_python("/usr/bin/python3")
 
 setwd('~/Desktop/doublet/bm/')
@@ -96,10 +99,10 @@ ElbowPlot(bm)
 # We choose 15 as the final
 # Run non-linear dimensional reduction
 bm <- FindNeighbors(bm, dims = 1:15)
-bm <- FindClusters(bm, resolution = 0.5)
+bm <- FindClusters(bm, resolution = 0.9)
 bm <- RunUMAP(bm, dims = 1:15)
 DimPlot(bm, reduction = "umap",label = TRUE)
-saveRDS(bm, file = "./bm_before_annotation.rds")
+saveRDS(bm, file = "./bm_before_annotation_rs.rds")
 
 # Identify the marker genes
 # Automated annotation using SingleR
@@ -112,27 +115,32 @@ bm.hesc.fine <- SingleR(test = bm_for_SingleR, ref = list(ref_HPCA,ref_MI), labe
 bm.hesc.main
 bm.hesc.fine
 bm_sglr_main <- table(bm.hesc.main$labels,bm@meta.data$seurat_clusters)
-write.csv(bm_sglr_main,'./bm_sglr_main.csv')
+write.csv(bm_sglr_main,'./bm_sglr_main_rs.csv')
 bm_sglr_fine <- table(bm.hesc.fine$labels,bm@meta.data$seurat_clusters)
-write.csv(bm_sglr_fine,'./bm_sglr_fine.scv')
+write.csv(bm_sglr_fine,'./bm_sglr_fine_rs.scv')
 
 # Manul annotation
-top_100_markers <- data.frame(matrix(0,nrow = 100,ncol = length(levels(bm@meta.data$seurat_clusters))))
+top_150_markers <- data.frame(matrix(0,nrow = 150,ncol = length(levels(bm@meta.data$seurat_clusters))))
 for (i in 1:length(levels(bm@meta.data$seurat_clusters))){
-  cluster_markers <- FindMarkers(bm,ident.1 = i-1,min.pct = 0.25)
-  top_100_markers[,i] <- head(rownames(cluster_markers),100)
+  cluster_markers <- FindMarkers(bm,ident.1 = i-1,min.pct = 0.25,only.pos = TRUE)
+  if (nrow(cluster_markers) >= 150){
+    top_150_markers[,i] <- head(rownames(cluster_markers),150)
+  } else {
+    top_150_markers[1:nrow(cluster_markers),i] <- row.names(cluster_markers)
+  }
+  
 }
-top_100_markers
+top_150_markers
 
 table(bm@active.ident)
-new.cluster.ids <- c("CD4+ naive T cells", "CD4+ memory T cells", 'CD8+ T cells', 'CD14+ monocytes',"B cells",'Late erythroid progenitors',
-                     'Early erythrocytes','Hematopoietic stem cell','Early erythroid progenitors','Late erythrocytes','B cell progenitors',
-                     'CD16+ monocytes','Granulocyte/monocyte progenitor cells','Myeloid dendritic cells','Late erythrocytes','Plasma cells',
-                     'Plasmacytoid dendritic cells','Natural killer cells','B cells')
+new.cluster.ids <- c("CD4+ memory T cells", "CD4+ memory T cells", 'CD8+ T cells', 'CD4+ naive T cells',"CD14+ monocytes",
+                     'B cells','CD8+ T cells','Late erythroid progenitors','NK cells','Early erythrocytes','Neutraphil','Early erythroid progenitors',
+                     'Late erythrocytes','CD4+ memory T cells','Megakaryocytes','CD16+ Monocytes','Myeloid dendritic cells','B progenitor cells',
+                     'Late erythrocytes','Plasma cells','Plasmacytoid dendritic cells','B progenitor cells','Macrophage',
+                     'Early erythroid progenitors','Late erythrocytes','NK T cells','B progenitor cells','Stromal cells')
 names(new.cluster.ids) <- levels(bm)
 bm <- RenameIdents(bm, new.cluster.ids)
 DimPlot(bm, reduction = "umap", label = TRUE, pt.size = 0.6,label.size = 4)
-#DimPlot(bm, reduction = "tsne", label = TRUE, pt.size = 0.6,label.size = 4)
 
 # remove the unknown cluster
 bm <- subset(bm,idents = 'Unknown',invert = TRUE)
@@ -233,3 +241,58 @@ plotSwarmCircos(sObj.si, cObjSng.si, cObjMul.si, weightCut=3,
 mult.pred <- adjustFractions(singlets=cObjSng.si, multiplets=cObjMul.si, swarm=sObj.si.k, binary=T, maxCellsPerMultiplet=3,multiplet.factor = 2)
 
 
+library(Seurat)
+setwd('/data/hancx/project/doublets/doublets_bm/')
+bm <- readRDS('./input/bm.rds')
+samples <- readRDS('./input/samples.rds')
+
+for (i in 1:25){
+  sample_id <- samples[i]
+  bm_singlets <- subset(bm,orig.ident == sample_id)
+  file_name <- paste('./singlets_rds/bm',i,'.rds',sep = '')
+  saveRDS(bm_singlets,file = file_name)
+}
+
+bm_dc_df <- data.frame()
+setwd('./output')
+file <- list.files(path = './')
+for (i in 1:length(file)){
+  result <- readRDS(file[i])
+  result_df <- result[[3]]
+  result_df$merge <- apply(result_df[,c(1:2)],1,function(x) paste(sort(x),collapse ='_'))
+  result_df<-result_df[!duplicated(result_df$merge),]
+  bm_dc_df <- rbind(bm_dc_df,result_df)
+}
+count_df <- bm_dc_df %>% select(c('merge','weight'))
+count_table <- as.data.frame(table(count_df$merge))
+count_table$ymin <- rep(0,22)
+count_df <- aggregate(count_df$weight,by = list(count_df$merge),sum)
+
+theme <- theme(panel.background = element_blank(), # 去掉背景格子
+               # 显示x平行网格线
+               panel.grid.major.x = element_line(colour = "black"), 
+               # 显示x轴坐标
+               axis.line.x = element_line(colour = "black"),
+               axis.title.y = element_blank(),
+               axis.text =  element_text(size = 10,face = 'bold'))
+
+ggplot(data = count_table) + geom_segment(aes(x = reorder(Var1,Freq), y = ymin,
+                                              xend =reorder(Var1,Freq), yend = Freq)) + ylab('Freqency') +
+  geom_point(aes(x = reorder(Var1,Freq), y = Freq), 
+             size = 6,colour = '#db5461') +
+  scale_y_continuous(breaks=seq(0, 10, 2),expand = c(0,0),limits = c(0,10))+
+  coord_flip() + theme 
+
+
+ggplot(data = count_df) + geom_bar(aes(x = reorder(Group.1,x), y = x),stat = "identity",fill = '#3d5467')  +
+  scale_y_continuous(expand = c(0,0),limits = c(0,100))+
+  coord_flip() + theme
+
+table(bm$orig.ident)
+table(bm$seurat_clusters)
+table(Idents(bm))
+prop.table(table(Idents(bm)))
+cell.prop <- as.data.frame(prop.table(table(Idents(bm))))
+ggdonutchart(cell.prop,'Freq',
+             label = 'Var1',
+             fill = 'Var1')
