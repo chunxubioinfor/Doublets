@@ -16,6 +16,7 @@ library(customLayout)
 library(clustree)
 library(ggplot2)
 library(ggpubr)
+library(reshape2)
 use_python("/usr/bin/python3")
 
 setwd('~/Desktop/doublet/bm/')
@@ -133,11 +134,11 @@ for (i in 1:length(levels(bm@meta.data$seurat_clusters))){
 top_150_markers
 
 table(bm@active.ident)
-new.cluster.ids <- c("CD4+ memory T cells", "CD4+ memory T cells", 'CD8+ T cells', 'CD4+ naive T cells',"CD14+ monocytes",
-                     'B cells','CD8+ T cells','Late erythroid progenitors','NK cells','Early erythrocytes','Neutraphil','Early erythroid progenitors',
-                     'Late erythrocytes','CD4+ memory T cells','Megakaryocytes','CD16+ Monocytes','Myeloid dendritic cells','B progenitor cells',
-                     'Late erythrocytes','Plasma cells','Plasmacytoid dendritic cells','B progenitor cells','Macrophage',
-                     'Early erythroid progenitors','Late erythrocytes','NK T cells','B progenitor cells','Stromal cells')
+new.cluster.ids <- c("T4 cell", "T4 cell", 'T8 cell', 'Th cell',"Monocyte",
+                     'B cell','T8 cell','Progenitor','NK cell','Erythrocyte','Neutraphil','Progenitor',
+                     'Erythrocyte','T4 cell','Progenitor','Monocyte','Myeloid DC','pre-B cell',
+                     'Erythrocyte','B plasma cell','Dendritic pDC','pre-B cell','Macrophage',
+                     'Progenitor','Erythrocyte','T/NK cell','pre-B cell','Stromal cell')
 names(new.cluster.ids) <- levels(bm)
 bm <- RenameIdents(bm, new.cluster.ids)
 DimPlot(bm, reduction = "umap", label = TRUE, pt.size = 0.6,label.size = 4)
@@ -254,7 +255,7 @@ for (i in 1:25){
 }
 
 bm_dc_df <- data.frame()
-setwd('./output')
+setwd('./Doublets/output_v3/output/')
 file <- list.files(path = './')
 for (i in 1:length(file)){
   result <- readRDS(file[i])
@@ -265,8 +266,32 @@ for (i in 1:length(file)){
 }
 count_df <- bm_dc_df %>% select(c('merge','weight'))
 count_table <- as.data.frame(table(count_df$merge))
-count_table$ymin <- rep(0,22)
+count_table$ymin <- rep(0,23)
 count_df <- aggregate(count_df$weight,by = list(count_df$merge),sum)
+
+## 绘制热图
+for (i in 1:nrow(count_df)){
+  cell_name <- count_df$Group.1[i]
+  count_df$Var1[i] <- unlist(strsplit(cell_name,'_'))[1]
+  count_df$Var2[i] <- unlist(strsplit(cell_name,'_'))[2]
+}
+
+
+count_mx <- matrix(0,nrow = 16,ncol = 16,dimnames = list(sort(levels(bm)),sort(levels(bm))))
+for (i in 1:nrow(count_mx)){
+  for(j in 1:ncol(count_mx)){
+    doublets_name <- paste(sort(c(rownames(count_mx)[i],colnames(count_mx)[j])),collapse = '_')
+    if (doublets_name %in% count_df$Group.1){
+      count_mx[i,j] <- count_df[count_df$Group.1 == doublets_name,]$x
+    }
+  }
+}
+
+melted_df <- melt(count_mx)
+ggplot(data = melted_df,aes(x=Var1,y=Var2,fill=value)) +
+  geom_tile(height = -1,width = 1) +
+  scale_fill_gradient2(low = '#000000',high = '#FFEA45',mid = '#2A3E65') +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=1,size = 10,face = 'bold'),axis.text.y = element_text(size = 10,face = 'bold'))
 
 theme <- theme(panel.background = element_blank(), # 去掉背景格子
                # 显示x平行网格线
@@ -279,7 +304,7 @@ theme <- theme(panel.background = element_blank(), # 去掉背景格子
 ggplot(data = count_table) + geom_segment(aes(x = reorder(Var1,Freq), y = ymin,
                                               xend =reorder(Var1,Freq), yend = Freq)) + ylab('Freqency') +
   geom_point(aes(x = reorder(Var1,Freq), y = Freq), 
-             size = 6,colour = '#db5461') +
+             size = 10,colour = '#db5461') +
   scale_y_continuous(breaks=seq(0, 10, 2),expand = c(0,0),limits = c(0,10))+
   coord_flip() + theme 
 
@@ -295,4 +320,9 @@ prop.table(table(Idents(bm)))
 cell.prop <- as.data.frame(prop.table(table(Idents(bm))))
 ggdonutchart(cell.prop,'Freq',
              label = 'Var1',
-             fill = 'Var1')
+             fill = 'Var1',
+             lab.pos = 'in',
+             lab.font = c(3,'plain','black'),
+             lab.adjust = 0,
+             size = 0)
+
