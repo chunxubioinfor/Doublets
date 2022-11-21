@@ -1,5 +1,6 @@
 library(Seurat)
 library(psych)
+library(dplyr)
 ## Interaction Matrix ##
 setwd('~/Desktop/doublet/bm/Doublets/')
 interactions_csv <- read.csv('~/Desktop/doublet/wiring/Leuk_interaction_affinities.csv',header = TRUE)
@@ -10,18 +11,39 @@ bm.averages <- AverageExpression(bm, slot = 'data', return.seurat = TRUE)
 # Three modes: RNA, SCT, integrated
 dim(bm.averages@assays$RNA@data)
 head(bm.averages@assays$RNA@data)
+bm_avg_expr <- bm.averages@assays$RNA@data
+write.csv(bm_avg_expr, file = "./bm_avg_expr.csv")
 
 ## Define a function to calculate the interaction between cell type m and cell type n
 ## The basic concept is the sum of all pairs of expression score divided by Kd
 ## But some are without Kd
 ## And 
-lignad_receptor <- c(interactions_csv$Gene_L,interactions_csv$Gene_R)
+cal_gm_mean <- function(gene_list,cell){
+  expr <- c()
+  for (i in 1:length(gene_list)){
+    expr <- c(expr,bm_avg_expr[gene_list[i],cell])
+  }
+  gm_mean <- geometric.mean(expr)
+  return(gm_mean)
+}
 
-pair_labeler <- function(){
-  
+cal_expr_score <- function(ligand,receptor,transmitter,receiver,method){
+  ligand <- unlist(strsplit(ligand,','))
+  receptor <- unlist(strsplit(receptor,','))
+  l_expr <- cal_gm_mean(ligand,transmitter)
+  r_expr <- cal_gm_mean(receptor,receiver)
+  if (method == 'counts'){
+    expr_score <- l_expr * r_expr
+    return(expr_score)
+  }
+  else if (method == 'Kd'){
+    Kd_nM <- filter(interactions_csv,gene_L == ligand,gene_R == receptor)$Kd_nM
+    expr_score <- (l_expr * r_expr) / Kd_nM
+    return(expr_score)
+  }
 }
 
 
-cal_intxn_score <- function(transmitter_expr,receiver_expr,ligand,receptor){
+cal_intxn_score <- function(transmitter_expr,receiver_expr,ligand,receptor,method){
 
 }
