@@ -1,6 +1,9 @@
 library(Seurat)
 library(psych)
 library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(Ipaper)
 ## Interaction Matrix ##
 setwd('~/Desktop/doublet/bm/Doublets/')
 
@@ -33,18 +36,21 @@ cal_gm_mean <- function(gene_list,cell){
 }
 
 cal_expr_score <- function(ligand,receptor,transmitter,receiver,method){
-  ligand <- unlist(strsplit(ligand,','))
-  receptor <- unlist(strsplit(receptor,','))
-  l_expr <- cal_gm_mean(ligand,transmitter)
-  r_expr <- cal_gm_mean(receptor,receiver)
+  ligand_list <- unlist(strsplit(ligand,','))
+  receptor_list <- unlist(strsplit(receptor,','))
+  l_expr <- cal_gm_mean(ligand_list,transmitter)
+  r_expr <- cal_gm_mean(receptor_list,receiver)
   if (method == 'counts'){
     expr_score <- l_expr * r_expr
-    return(expr_score)
   } else if (method == 'Kd'){
     Kd_nM <- filter(interactions_csv,Gene_L == ligand,Gene_R == receptor)$Kd_nM
-    expr_score <- (l_expr * r_expr) / Kd_nM
-    return(expr_score)
+    if (is.na(Kd_nM)){
+      expr_score <- 0
+    } else {
+      expr_score <- (l_expr * r_expr) / Kd_nM
+    }
   }
+  return(expr_score)
 }
 
 
@@ -67,8 +73,20 @@ cal_intxn_score <- function(lr_pairs,cell_m,cell_n,method){
 intxn_mtx <- matrix(0,nrow = 16,ncol = 16,dimnames = list(sort(levels(bm)),sort(levels(bm))))
 for (i in 1:nrow(intxn_mtx)){
   for(j in 1:ncol(intxn_mtx)){
-    intxn_score <- cal_intxn_score(interactions_csv,cell_m = rownames(intxn_mtx)[i],cell_n = colnames(intxn_mtx)[j],method = 'counts')
+    intxn_score <- cal_intxn_score(interactions_csv,cell_m = rownames(intxn_mtx)[i],cell_n = colnames(intxn_mtx)[j],method = 'Kd')
     doublets_name <- paste(sort(c(rownames(intxn_mtx)[i],colnames(intxn_mtx)[j])),collapse = '_')
     intxn_mtx[i,j] <- intxn_score
   }
 }
+write.csv(intxn_mtx,'./intxn_mtx_counts.csv')
+write.csv(intxn_mtx,'./intxn_mtx_Kd.csv')
+
+melted_intxn_df <- melt(intxn_mtx)
+p1 <-  ggplot(data = melted_intxn_df,aes(x=Var1,y=Var2,fill=value)) +
+    geom_tile(height = -1,width = 1) +
+    scale_fill_gradient2(low = '#000000',high = '#FFEA45',mid = '#21325A',midpoint = 20) +
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=1,size = 10,face = 'bold'),axis.text.y = element_text(size = 10,face = 'bold')) +
+  labs(x=NULL,y=NULL)
+write_fig(p1,'./hm_counts.png',width = 11,height = 10,res = 300,show = FALSE)
+write_fig(p1,'./hm_Kd.png',width = 11,height = 10,res = 300,show = FALSE)
+
