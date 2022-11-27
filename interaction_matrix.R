@@ -84,8 +84,8 @@ write.csv(intxn_mtx,'./intxn_mtx_Kd.csv')
 melted_intxn_df <- melt(intxn_mtx)
 p1 <-  ggplot(data = melted_intxn_df,aes(x=Var1,y=Var2,fill=value)) +
     geom_tile(height = -1,width = 1) +
-    scale_fill_gradient2(low = '#000000',high = '#FFEA45',mid = '#21325A',midpoint = 20) +
-    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=1,size = 10,face = 'bold'),axis.text.y = element_text(size = 10,face = 'bold')) +
+    scale_fill_gradient2(low = '#000000',high = '#FFEA45',mid = '#21325A',midpoint = 15) +
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=1,size = 13,face = 'bold'),axis.text.y = element_text(size = 10,face = 'bold')) +
   labs(x=NULL,y=NULL)
 write_fig(p1,'./hm_counts.png',width = 11,height = 10,res = 300,show = FALSE)
 write_fig(p1,'./hm_Kd.png',width = 11,height = 10,res = 300,show = FALSE)
