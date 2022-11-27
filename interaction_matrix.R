@@ -89,4 +89,4 @@ p1 <-  ggplot(data = melted_intxn_df,aes(x=Var1,y=Var2,fill=value)) +
   labs(x=NULL,y=NULL)
 write_fig(p1,'./hm_counts.png',width = 11,height = 10,res = 300,show = FALSE)
 write_fig(p1,'./hm_Kd.png',width = 11,height = 10,res = 300,show = FALSE)
-
+# done
