@@ -255,7 +255,7 @@ for (i in 1:25){
 }
 
 bm_dc_df <- data.frame()
-setwd('./Doublets/output_v3/output/')
+setwd('./output_v3/output/')
 file <- list.files(path = './')
 for (i in 1:length(file)){
   result <- readRDS(file[i])
